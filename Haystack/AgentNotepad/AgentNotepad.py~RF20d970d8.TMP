@@ -1,0 +1,63 @@
+import spade
+import os
+import subprocess
+import threading
+import win32com
+import time
+
+import splinter
+from splinter import Browser
+
+import pywin
+import pywinauto
+
+from selenium import webdriver
+from selenium.webdriver.firefox.firefox_binary import FirefoxBinary
+
+import mysql.connector
+
+cnx = mysql.connector.connect(user='root', host='127.0.0.1', database='agentsandservices')
+identification = spade.AID.aid(name="n@127.0.0.1", addresses=["xmpp://n@127.0.0.1"])
+
+app = 0
+class AgentNotepad(spade.Agent.Agent):
+        
+    class StartBehav(spade.Behaviour.OneShotBehaviour):
+        def onStart(self):
+            print "ANB onStart"
+            global app 
+            app = pywinauto.application.Application().Start(cmd_line=u'notepad.exe')
+
+    class TypeBehav(spade.Behaviour.EventBehaviour):
+        def _process(self):
+            print "ANB _process"
+            #app.UntitledNotepad.Edit.TypeKeys("Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.", with_spaces=True)
+            app.UntitledNotepad.Edit.TypeKeys("Lorem ipsum", with_spaces=True)
+            app.UntitledNotepad.Edit.TypeKeys("{ENTER}")
+            #menu_item = app.UntitledNotepad.MenuItem(u'&File->Save &As...')
+            #menu_item.ClickInput()
+            #app.UntitledNotepad.Edit.Typekeys("{ENTER}")
+
+        def typeThings(self):
+            app.UntitledNotepad.Edit.TypeKeys("Lorem ipsum", with_spaces=True)
+            app.UntitledNotepad.Edit.TypeKeys("{ENTER}")
+            
+        def onEnd(self):
+            print "ANB onEnd"
+
+    def _setup(self):
+        print "_setup"
+        # Create the template for the EventBehaviour: a message from myself
+        template = spade.Behaviour.ACLTemplate()
+        template.setSender(spade.AID.aid("a@127.0.0.1",["xmpp://a@127.0.0.1"]))
+        t = spade.Behaviour.MessageTemplate(template)
+        
+        # Add the EventBehaviour with its template
+        self.addBehaviour(self.TypeBehav(),t)
+        self.addBehaviour(self.StartBehav(),None)
+
+if __name__ == "__main__":
+    a = AgentNotepad("n@127.0.0.1", "secret")
+    a.start()
+
+cnx.close()

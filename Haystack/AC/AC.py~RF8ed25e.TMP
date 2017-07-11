@@ -1,0 +1,218 @@
+import spade
+import os
+import subprocess
+import threading
+import win32com
+import time
+
+import pywin
+import pywinauto
+
+from selenium import webdriver
+from selenium.webdriver.firefox.firefox_binary import FirefoxBinary
+
+import mysql.connector
+
+cnx = mysql.connector.connect(user='root', host='127.0.0.1', database='agentsandservices')
+identification = spade.AID.aid(name="ac@127.0.0.1", addresses=["xmpp://ac@127.0.0.1"])
+
+class AgentController(spade.Agent.Agent):
+    def agentIDfromName(self, agentName):
+        global cnx
+        cursor = cnx.cursor()
+        query = ("SELECT agentID FROM agents WHERE agentName = \'{}\'".format(agentName))
+        cursor.execute(query)
+        agentID = cursor.fetchone()
+        cursor.close()
+        return agentID[0]
+
+    def serviceIDfromName(self, serviceName):
+        global cnx
+        cursor = cnx.cursor()
+        query = ("SELECT serviceID FROM services WHERE serviceName = \'{}\'".format(serviceName))
+        cursor.execute(query)
+        serviceID = cursor.fetchone()
+        cursor.close()
+        return serviceID[0]
+
+    def printAgents(self):
+        global cnx
+        cursor = cnx.cursor()
+        query = ("SELECT agentID, agentName, agentVersion, agentOS, agentArchitecture, agentStatus FROM agents")
+        cursor.execute(query)
+        for (agentID, agentName, agentVersion, agentOS, agentArchitecture, agentStatus) in cursor:
+            print("{}, {}, {}, {}, {}, {}".format(agentID, agentName, agentVersion, agentOS, agentArchitecture, agentStatus))
+        cursor.close()
+
+    def newAgent(self, agentName, agentVersion, agentOS, agentArchitecture, agentStatus):
+        global cnx
+        cursor = cnx.cursor()
+        query = ("INSERT INTO agents(agentName, agentVersion, agentOS, agentArchitecture, agentStatus) VALUES(\"{}\", {}, \"{}\", \"{}\", {})".format(agentName, agentVersion, agentOS, agentArchitecture, agentStatus))
+        cursor.execute(query)
+        cursor.close()
+
+    def removeAgent(self, agentName):
+        global cnx
+        cursor = cnx.cursor()
+        query = ("DELETE FROM agents WHERE agentName = \'{}\'".format(agentName))
+        cursor.execute(query)
+        cursor.close()
+
+    def controlAgent(self, agentName):
+        quit = False
+        while quit == False:
+            print agentName + " Menu"
+            print "q: Quit"
+            message = raw_input("Command: ")
+            if message == "q":
+                quit = True
+            else:
+                msg = spade.ACLMessage.ACLMessage()
+                msg.setPerformative("inform")
+                msg.addReceiver(spade.AID.aid(agentName+"@127.0.0.1",["xmpp://"+agentName+"@127.0.0.1"]))
+                msg.setContent(message)
+                self.send(msg)
+        
+    def printServices(self):
+        global cnx  
+        cursor = cnx.cursor()
+        query = ("SELECT serviceID, serviceName FROM services")
+        cursor.execute(query)
+        for (serviceID, serviceName) in cursor:
+            print("{}, {}".format(serviceID, serviceName))
+        cursor.close()
+
+    def newService(self, serviceName):
+        global cnx
+        cursor = cnx.cursor()
+        query = ("INSERT INTO services(serviceName) VALUES(\"{}\")".format(serviceName))
+        cursor.execute(query)
+        cursor.close()
+
+    def removeService(self, serviceName):
+        global cnx
+        cursor = cnx.cursor()
+        query = ("DELETE FROM services WHERE serviceName = \'{}\'".format(serviceName)) 
+        cursor.execute(query)
+        cursor.close()
+
+    def printAgentsServices(self):
+        global cnx
+        cursor = cnx.cursor()
+        query = ("SELECT agentID, serviceID FROM agents_services")
+        cursor.execute(query)
+        for (agentID, serviceID) in cursor:
+            print("{}, {}".format(agentID, serviceID))
+        cursor.close()
+
+    def addServiceToAgent(self, agentName, serviceName):
+        global cnx
+
+        agentID = self.agentIDfromName(agentName)     
+        serviceID = self.serviceIDfromName(serviceName)
+
+        cursor = cnx.cursor()
+        query = ("INSERT INTO agents_services(agentID, serviceID) VALUES({}, {})".format(agentID, serviceID))
+        cursor.execute(query)
+        cursor.close()
+
+    def removeServiceFromAgent(self, agentName, serviceName):
+        global cnx
+        
+        agentID = self.agentIDfromName(agentName)
+        serviceID = self.serviceIDfromName(serviceName)
+
+        cursor = cnx.cursor()
+        query = ("DELETE FROM agents_services WHERE agentID = {} AND serviceID = {}".format(agentID, serviceID))
+        cursor.execute(query)
+        cursor.close()
+
+    class ReceiveAgent(spade.Behaviour.EventBehaviour):
+        def _process(self):            
+            print "Detected new agent!"
+            strList = self._receive().getContent().split(",")
+            agentName = strList[0]
+            agentVersion = strList[1]
+            agentOS = strList[2]
+            agentArchitecture = strList[3]
+            agentStatus = strList[4]
+            AC.newAgent(agentName, agentVersion, agentOS, agentArchitecture, agentStatus)
+            print "Agent added"
+
+    def _setup(self):
+        print "_setup"
+        # Create the template for the EventBehaviour: a message from myself
+        template = spade.Behaviour.ACLTemplate()
+        template.setSender(spade.AID.aid("n@127.0.0.1",["xmpp://n@127.0.0.1"]))
+        t = spade.Behaviour.MessageTemplate(template)
+        
+        # Add the EventBehaviour with its template
+        self.addBehaviour(self.ReceiveAgent(),t)
+
+if __name__ == "__main__":
+    AC = AgentController("ac@127.0.0.1", "secret")
+    AC.start()
+
+quit = False
+
+while quit == False:
+    print "\n"
+    print "AC Menu"
+    print "1. List Agents"
+    print "2. New Agent"
+    print "3. Remove Agent"
+    print "4. List Services"
+    print "5. New Service"
+    print "6. Remove Service"
+    print "7. List Agents_Services"
+    print "8. Add service to agent"
+    print "9. Remove service from agent"
+    print "10. Control agent"
+    print "c. Commit"
+    print "q. Quit"
+    command = raw_input('Command: ')
+    print "\n"
+
+    if command == "1":
+        AC.printAgents()
+    elif command == "2":
+        agentName = raw_input("agentName: ")
+        agentVersion = raw_input('agentVersion: ')
+        agentOS = raw_input('agentOS: ')
+        agentArchitecture = raw_input('agentArchitecture: ')
+        agentStatus = raw_input('agentStatus: ')
+        AC.newAgent(agentName, agentVersion, agentOS, agentArchitecture, agentStatus)
+    elif command == "3":
+        agentName = raw_input('agentName: ')
+        AC.removeAgent(agentName)
+    elif command == "4":
+        AC.printServices()
+    elif command == "5":
+        serviceName = raw_input('serviceName: ')
+        AC.newService(serviceName)
+    elif command == "6":
+        serviceName = raw_input('serviceName: ')
+        AC.removeService(serviceName)
+    elif command == "7":
+        AC.printAgentsServices()
+    elif command == "8":
+        agentName = raw_input("agentName: ")
+        serviceName = raw_input("serviceName: ")
+        AC.addServiceToAgent(agentName, serviceName)
+    elif command == "9":
+        agentName = raw_input("agentName: ")
+        serviceName = raw_input("serviceName: ")
+        AC.removeServiceFromAgent(agentName, serviceName)
+    elif command == "10":
+        agentName = raw_input("agentName: ")
+        AC.controlAgent(agentName)
+    elif command == "c":
+        cnx.commit()
+    elif command == "q":
+        quit = True
+    else:
+        print "Invalid command"
+
+cnx.close()
+print "done"
+
